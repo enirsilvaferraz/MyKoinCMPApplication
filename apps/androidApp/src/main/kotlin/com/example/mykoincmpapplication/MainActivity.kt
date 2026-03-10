@@ -12,6 +12,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
+        val provider = AndroidPlatformProvider()
+        initKoin(
+            featureAProvider = provider,
+            featureBProvider = provider
+        )
+
         setContent {
             App()
         }

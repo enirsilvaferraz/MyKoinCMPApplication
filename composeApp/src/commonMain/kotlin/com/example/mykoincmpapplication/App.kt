@@ -18,10 +18,17 @@ import org.jetbrains.compose.resources.painterResource
 
 import mykoincmpapplication.composeapp.generated.resources.Res
 import mykoincmpapplication.composeapp.generated.resources.compose_multiplatform
+import org.koin.mp.KoinPlatform
 
 @Composable
 @Preview
 fun App() {
+
+    val interfaceDependency = KoinPlatform.getKoin().get<InterfaceDependency>()
+    val logger = KoinPlatform.getKoin().get<Logger>()
+    interfaceDependency.doSomething()
+    logger.log("App iniciada")
+
     MaterialTheme {
         var showContent by remember { mutableStateOf(false) }
         Column(
