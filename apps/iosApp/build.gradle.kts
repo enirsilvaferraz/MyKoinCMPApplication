@@ -13,12 +13,14 @@ kotlin {
             baseName = "IOSApp"
             isStatic = true
             export(projects.composeApp)
+            export(projects.module1)
         }
     }
 
     sourceSets {
         commonMain.dependencies {
             api(projects.composeApp)
+            api(projects.module1)
         }
     }
 }

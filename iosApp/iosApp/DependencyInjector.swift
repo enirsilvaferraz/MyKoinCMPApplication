@@ -11,14 +11,15 @@ import Swinject
 enum DependencyInjector {
 
     static func createContainer() -> Container {
+        
         let container = Container()
 
-        container.register(InterfaceDependency.self) { _ in
-            IOSInterfaceDependecy()
+        container.register(Module1Dependency1.self) { _ in
+            iOSDependency1()
         }
 
-        container.register(Logger.self) { _ in
-            IOSLogger()
+        container.register(Module1Dependency2.self) { _ in
+            iOSDependency2()
         }
 
         return container

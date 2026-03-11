@@ -6,17 +6,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import com.example.module1.di.startModule1
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        val provider = AndroidPlatformProvider()
-        initKoin(
-            featureAProvider = provider,
-            featureBProvider = provider
-        )
+        startModule1(AndroidProvider())
 
         setContent {
             App()

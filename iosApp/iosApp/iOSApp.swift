@@ -5,14 +5,9 @@ import IOSApp
 struct iOSApp: App {
 
     init() {
-        let container = DependencyInjector.createContainer()
-        let platformProvider = IOSPlatformProvider(container: container)
-
-        KoinInitHelperKt.doInitKoin(
-            featureAProvider: platformProvider,
-            featureBProvider: platformProvider,
-            additionalModules: []
-        )
+        
+        let container = DependencyInjector.createContainer()        
+        Module1ContractKt.startModule1(provider: iOSProviderImpl(container: container))
     }
     
     var body: some Scene {

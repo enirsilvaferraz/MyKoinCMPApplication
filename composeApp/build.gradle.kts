@@ -46,6 +46,8 @@ kotlin {
             implementation(libs.koin.annotations)
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
+
+            implementation(projects.module1)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

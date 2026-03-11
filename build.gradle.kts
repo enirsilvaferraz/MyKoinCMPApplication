@@ -8,4 +8,6 @@ plugins {
     alias(libs.plugins.composeCompiler) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.androidMultiplatformLibrary) apply false
+    alias(libs.plugins.koin.compiler) apply false
+    alias(libs.plugins.android.lint) apply false
 }

@@ -2,13 +2,11 @@ package com.example.mykoincmpapplication
 
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import com.example.module1.di.startModule1
 
 fun main() {
-    val provider = JvmPlatformProvider()
-    initKoin(
-        featureAProvider = provider,
-        featureBProvider = provider
-    )
+
+    startModule1(JVMProvider())
 
     application {
         Window(
