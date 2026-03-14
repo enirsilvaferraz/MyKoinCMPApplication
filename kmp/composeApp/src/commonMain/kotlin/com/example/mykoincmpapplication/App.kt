@@ -17,7 +17,6 @@ import org.koin.plugin.module.dsl.startKoin
 @Preview
 fun App() {
 
-    startKoin<AppModule>()
     val useCase = KoinPlatform.getKoin().get<ModuleUseCase>()
 
     MaterialTheme {

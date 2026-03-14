@@ -15,6 +15,12 @@ kotlin {
         implementation(projects.kmp.composeApp)
         implementation(libs.androidx.activity.compose)
         implementation(libs.compose.uiToolingPreview)
+
+        implementation(project.dependencies.platform(libs.koin.bom))
+        implementation(libs.koin.core)
+        implementation(libs.koin.annotations)
+        implementation(libs.koin.compose)
+        implementation(libs.koin.compose.viewmodel)
     }
 }
 

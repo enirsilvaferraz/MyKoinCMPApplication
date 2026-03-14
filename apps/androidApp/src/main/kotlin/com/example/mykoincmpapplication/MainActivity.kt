@@ -10,12 +10,20 @@ import com.example.module1.di.startModule1
 import com.example.module2.di.startModule2
 
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        startModule2(AndroidProviderModule2())
-        startModule1(AndroidProviderModule1())
+        initKoin {}
+
+        startModule2(
+            dependency2 = { Dependency2() }
+        )
+
+        startModule1(
+            dependency1 = { Dependency1() }
+        )
 
         setContent {
             App()
