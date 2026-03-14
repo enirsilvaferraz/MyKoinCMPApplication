@@ -12,15 +12,15 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "IOSApp"
             isStatic = true
-            export(projects.composeApp)
-            export(projects.module1)
+            export(projects.kmp.composeApp)
+            export(projects.kmp.module1)
+            export(projects.kmp.module2)
         }
     }
 
     sourceSets {
         commonMain.dependencies {
-            api(projects.composeApp)
-            api(projects.module1)
+            api(projects.kmp.composeApp)
         }
     }
 }

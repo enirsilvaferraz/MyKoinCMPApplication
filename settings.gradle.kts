@@ -32,8 +32,8 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-include(":composeApp")
 include(":apps:androidApp")
-include(":apps:desktopApp")
 include(":apps:iosApp")
-include(":module1")
+include(":kmp:composeApp")
+include(":kmp:module1")
+include(":kmp:module2")
