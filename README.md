@@ -1,7 +1,5 @@
 # Swinject + Koin: como injetar dependências Swift no Kotlin Multiplatform em projetos multi-módulo
 
-## Introdução
-
 O Kotlin Multiplatform (KMP) resolve um problema antigo do desenvolvimento mobile: compartilhar lógica de negócio entre Android, iOS e Desktop sem reescrever código. Mas existe um cenário que o KMP sozinho não resolve — quando a lógica compartilhada precisa consumir dependências que só existem no mundo nativo de cada plataforma.
 
 Pense em configurações de criptografia de rede, acesso à Keychain, biometria ou qualquer SDK proprietário. No iOS, essas implementações vivem em Swift e muitas vezes já estão registradas em um container de injeção de dependências como o **Swinject**. No Android, o equivalente pode estar em Kotlin puro, gerenciado pelo Hilt, Dagger ou pelo próprio Koin.

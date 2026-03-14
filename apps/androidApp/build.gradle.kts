@@ -13,6 +13,7 @@ kotlin {
     
     dependencies {
         implementation(projects.composeApp)
+        implementation(projects.module1)
         implementation(libs.androidx.activity.compose)
         implementation(libs.compose.uiToolingPreview)
     }

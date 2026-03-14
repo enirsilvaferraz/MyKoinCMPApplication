@@ -1,7 +1,7 @@
 package com.example.module1.di
 
-import com.example.module1.dependencies.Module1Dependency1
-import com.example.module1.dependencies.Module1Dependency2
+import com.example.module1.dependencies.NativePlatformDependency1
+import com.example.module1.dependencies.NativePlatformDependency2
 import org.koin.core.annotation.ComponentScan
 import org.koin.core.annotation.Factory
 import org.koin.core.annotation.Module
@@ -15,11 +15,11 @@ class KoinModule1 {
         Module1DependencyProviderWrapper.provider
 
     @Factory
-    fun provideDependency1(provider: Module1DependencyProvider): Module1Dependency1 =
+    fun provideDependency1(provider: Module1DependencyProvider): NativePlatformDependency1 =
         provider.provideDependency1()
 
     @Factory
-    fun provideDependency2(provider: Module1DependencyProvider): Module1Dependency2 =
+    fun provideDependency2(provider: Module1DependencyProvider): NativePlatformDependency2 =
         provider.provideDependency2()
 }
 

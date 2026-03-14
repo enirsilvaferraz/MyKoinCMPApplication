@@ -14,11 +14,11 @@ enum DependencyInjector {
         
         let container = Container()
 
-        container.register(Module1Dependency1.self) { _ in
+        container.register(NativePlatformDependency1.self) { _ in
             iOSDependency1()
         }
 
-        container.register(Module1Dependency2.self) { _ in
+        container.register(NativePlatformDependency2.self) { _ in
             iOSDependency2()
         }
 

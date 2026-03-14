@@ -9,11 +9,11 @@ class iOSProviderImpl: Module1DependencyProvider {
         self.container = container
     }
     
-    func provideDependency1() -> Module1Dependency1 {
-        return container.resolve(Module1Dependency1.self)!
+    func provideDependency1() -> NativePlatformDependency1 {
+        return container.resolve(NativePlatformDependency1.self)!
     }
     
-    func provideDependency2() -> Module1Dependency2 {
-        return container.resolve(Module1Dependency2.self)!
+    func provideDependency2() -> NativePlatformDependency2 {
+        return container.resolve(NativePlatformDependency2.self)!
     }
 }
