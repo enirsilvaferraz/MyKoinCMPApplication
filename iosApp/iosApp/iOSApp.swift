@@ -9,13 +9,13 @@ struct iOSApp: App {
         let container = DependencyInjector.createContainer()
 
         AppModuleKt.doInitKoin { appKoin in
-            appKoin.loadModule(
+            appKoin.modules(
                 module: Module1ContractKt.feature1Module(dependency1: { _ in container.resolve(NativePlatformDependency1.self)! })
             )
         }
         
 
-        KoinExtensionsKt.loadModule(
+        KoinExtensionsKt.loadKoinModules(
             module: Module2ContractKt.feature2Module(dependency2: { _ in container.resolve(NativePlatformDependency2.self)! })
         )
     }

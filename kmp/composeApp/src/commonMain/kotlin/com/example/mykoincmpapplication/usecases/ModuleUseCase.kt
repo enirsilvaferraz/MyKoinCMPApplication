@@ -1,4 +1,4 @@
-package com.example.module1.usecases
+package com.example.mykoincmpapplication.usecases
 
 import com.example.module1.dependencies.NativePlatformDependency1
 import com.example.module2.dependencies.NativePlatformDependency2

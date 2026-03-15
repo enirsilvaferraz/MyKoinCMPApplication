@@ -1,13 +1,12 @@
 package com.example.mykoincmpapplication
 
 import org.koin.core.KoinApplication
-import org.koin.core.context.loadKoinModules
 import org.koin.core.module.Module
 
-fun loadModule(module: Module) {
-    loadKoinModules(module)
+fun loadKoinModules(module: Module) {
+    org.koin.core.context.loadKoinModules(module)
 }
 
-fun KoinApplication.loadModule(module: Module) {
+fun KoinApplication.modules(module: Module) {
     modules(module)
 }

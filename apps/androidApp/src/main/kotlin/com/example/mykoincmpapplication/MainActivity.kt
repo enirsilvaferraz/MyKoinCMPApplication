@@ -18,12 +18,12 @@ class MainActivity : ComponentActivity() {
 
         initKoin {
             modules(
-                feature1Module(dependency1 = { Dependency1() })
+                feature1Module(dependency1 = { AndroidDependency1() })
             )
         }
 
         loadKoinModules(
-            feature2Module(dependency2 = { Dependency2() })
+            feature2Module(dependency2 = { AndroidDependency2() })
         )
 
         setContent {

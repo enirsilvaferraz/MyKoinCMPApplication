@@ -9,9 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.module1.usecases.ModuleUseCase
+import com.example.mykoincmpapplication.usecases.ModuleUseCase
 import org.koin.mp.KoinPlatform
-import org.koin.plugin.module.dsl.startKoin
 
 @Composable
 @Preview

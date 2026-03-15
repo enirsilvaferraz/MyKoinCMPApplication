@@ -1,8 +1,14 @@
 # Swinject + Koin: como injetar dependências Swift no Kotlin Multiplatform em projetos multi-módulo
 
-O Kotlin Multiplatform (KMP) permite compartilhar lógica de negócio entre Android e iOS. Quando essa lógica precisa consumir dependências que só existem no mundo nativo — criptografia, Keychain, biometria, SDKs proprietários — o cenário fica mais complexo.
+**Sumário:** [Introdução](#introdução) · [Contextualização](#contextualização) · [Solução](#solução) · [Conclusão](#conclusão)
 
-No iOS, essas implementações vivem em Swift e costumam estar em um container de DI como o **Swinject**. No Android, o equivalente pode ser Hilt ou Koin. A pergunta central: como fazer um `UseCase` no `commonMain` receber essas instâncias nativas?
+---
+
+## Introdução
+
+No **Kotlin Multiplatform (KMP)** a gente escreve parte do código uma vez e reutiliza no app Android e no app iOS. Às vezes essa lógica compartilhada precisa de coisas que só existem em cada plataforma — por exemplo Keychain no iOS, ou biometria em cada um. A pergunta do artigo é: como o código compartilhado recebe essas dependências se elas são criadas dentro de cada app, em Swift (iOS) ou em Kotlin (Android)?
+
+Um exemplo ajuda. Um UseCase vive num módulo compartilhado e depende de duas interfaces; cada plataforma implementa essas interfaces do seu jeito.
 
 ```kotlin
 @Factory
@@ -15,17 +21,97 @@ class ModuleUseCase(
 }
 ```
 
-O UseCase vive no código compartilhado e depende de duas interfaces. As implementações concretas vêm de cada plataforma. O desafio é fazer essas instâncias chegarem até aqui.
+Esse UseCase é usado no Compose App. O Composable `App()` pede o UseCase ao Koin e exibe o resultado na tela:
+
+```kotlin
+@Composable
+fun App() {
+    val useCase = KoinPlatform.getKoin().get<ModuleUseCase>()
+
+    MaterialTheme {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Teste KOIN + SWINJECT")
+                Text(useCase.doSomething1())
+                Text(useCase.doSomething2())
+            }
+        }
+    }
+}
+```
+
+Para isso funcionar, o Koin precisa criar o `ModuleUseCase` e injetar `NativePlatformDependency1` e `NativePlatformDependency2`. Quem fornece essas instâncias? No Android, o app; no iOS, muitas vezes um container como o **Swinject**. O problema é que o código compartilhado **não conhece** o app: em KMP a dependência flui do app para as libs, nunca o contrário. O módulo do UseCase e o Compose App ficam “embaixo” na cadeia; eles não podem importar MainActivity nem o container do iOS. Então não dá para o compartilhado “pedir” as dependências ao app; o app é que tem de **entregar** essas referências ao Koin de algum jeito. Esse é o cerne do problema.
+
+O diagrama abaixo mostra onde cada parte fica: os apps (com as implementações), o framework KMP (interfaces, UseCase, Compose App) e a direção da dependência (app → framework).
+
+```mermaid
+flowchart TD
+    subgraph apps["Apps — implementações das dependências"]
+        androidApp["Android App<br/><small>Dependency1, Dependency2</small>"]
+        iosApp["iOS App<br/><small>iOSDependency1, iOSDependency2, Swinject</small>"]
+    end
+
+    subgraph framework["Framework KMP"]
+        composeApp["Compose App<br/><small>App() usa get&lt;ModuleUseCase&gt;()</small>"]
+        module1["Module1<br/><small>interface NativePlatformDependency1<br/>ModuleUseCase</small>"]
+        module2["Module2<br/><small>interface NativePlatformDependency2</small>"]
+    end
+
+    androidApp --> framework
+    iosApp --> framework
+    composeApp --> module1
+    composeApp --> module2
+```
+
+- **Implementações:** no **Android App** (`Dependency1`, `Dependency2`) e no **iOS App** (`iOSDependency1`, `iOSDependency2`, registradas no Swinject).
+- **Interfaces:** declaradas no **Module1** e no **Module2** (código compartilhado KMP).
+- **Uso:** no **Compose App**, onde o `App()` obtém o `ModuleUseCase` via Koin; o UseCase depende das duas interfaces e precisa receber as instâncias que cada app fornecerá.
 
 ---
 
-## Como Swinject e Koin funcionam neste projeto
+## Contextualização
 
-Antes de entrar na solução, vale deixar claro o papel de cada container no projeto.
+### Implementações por plataforma
 
-**Swinject (iOS)** — No app iOS, o Swinject é o container de injeção de dependências. O app cria um `Container`, registra interfaces (por exemplo as expostas pelo framework Kotlin) associadas a implementações Swift e, quando precisa de uma instância, chama `container.resolve(Interface.self)`. Tudo que é específico do iOS — Keychain, biometria, SDKs nativos — pode ser registrado ali. O Swinject é a **fonte de verdade** no mundo Swift: quem vive no app conhece o container e usa ele para obter dependências.
+As interfaces (`NativePlatformDependency1`, `NativePlatformDependency2`) são definidas no código compartilhado. Cada plataforma implementa com suas próprias classes.
 
-No projeto, o `DependencyInjector` configura o container e registra as interfaces (expostas pelo framework Kotlin) com as implementações Swift:
+No Android, são classes Kotlin no app que implementam as interfaces expostas pelo framework KMP:
+
+```kotlin
+// Android - app
+class Dependency1 : NativePlatformDependency1 {
+    override fun doSomething(): String = "[Android] Module Dependency1"
+}
+
+class Dependency2 : NativePlatformDependency2 {
+    override fun doSomething(): String = "[Android] Module Dependency2"
+}
+```
+
+No iOS, são classes Swift que importam o framework Kotlin e implementam as mesmas interfaces:
+
+```swift
+// iOS - app
+import IOSApp
+
+class iOSDependency1: NativePlatformDependency1 {
+    func doSomething() -> String {
+        return "[iOS] Module Dependency1"
+    }
+}
+
+class iOSDependency2: NativePlatformDependency2 {
+    func doSomething() -> String {
+        return "[iOS] Module Dependency2"
+    }
+}
+```
+
+### Como a DI funciona no Android e no iOS
+
+No **Android**, o app pode usar Koin, Hilt ou outro container. O ponto de entrada (por exemplo a `MainActivity`) conhece o contexto da aplicação e pode criar ou obter as dependências (por exemplo `Dependency1()`, `Dependency2()`). Ou seja, o app sabe *como* fornecer as instâncias que o Koin precisará para resolver o UseCase.
+
+No **iOS**, é comum usar um container nativo como o **Swinject**. O app cria um `Container`, registra as interfaces (incluindo as que vêm do framework Kotlin) com as implementações Swift e, quando precisa de uma instância, chama `container.resolve(Interface.self)`. No projeto, isso é feito pelo `DependencyInjector`:
 
 ```swift
 enum DependencyInjector {
@@ -38,11 +124,51 @@ enum DependencyInjector {
 }
 ```
 
-Quando o Koin precisar de uma instância no iOS, o app passa funções que capturam esse `container` e chamam `container.resolve(...)` na hora da resolução. O Swinject permanece como fonte de verdade; o Koin apenas invoca essas funções.
+O Swinject é a fonte de verdade no mundo Swift: o app conhece o container e usa ele para obter dependências. Já o **Koin** roda no código Kotlin compartilhado (dentro do framework que o app Swift importa). O Koin monta o grafo do UseCase e das demais classes do KMP, mas **não tem acesso ao container Swinject**. As instâncias que o Swinject gerencia vivem no processo do app; o Koin não sabe como obtê-las. Por isso não basta registrar tudo no Swinject — é preciso que o app **entregue** ao Koin, de alguma forma, a capacidade de obter essas instâncias quando o Koin for resolver o UseCase. 
 
-**Koin (KMP)** — No código compartilhado (Kotlin), o Koin é o container usado para montar o grafo de dependências. O app chama `initKoin { }` no ponto de entrada e, em seguida, carrega módulos que declaram factories e singletons. O `ModuleUseCase` e outros tipos do KMP são resolvidos pelo Koin: quando alguém pede `get<ModuleUseCase>()`, o Koin cria o UseCase e injeta o que ele precisa (por exemplo `NativePlatformDependency1` e `NativePlatformDependency2`). Ou seja, o Koin é a **fonte de verdade** no mundo Kotlin compartilhado.
+---
 
-No projeto, o `AppModule` é a raiz do grafo e declara os módulos compartilhados. A inicialização é feita no app via `initKoin(declarations)`:
+## Solução
+
+A ideia é: o módulo KMP expõe uma função que recebe “quem sabe fornecer a dependência” e **retorna** um módulo do Koin. O app chama essa função no ponto de entrada, passa a função que entrega a instância, e decide se inclui o módulo no start do Koin ou o carrega depois. A configuração do que o Koin precisa fica no próprio módulo KMP (contrato forte); o app só fornece a implementação.
+
+### Passo 1: Interfaces no código compartilhado
+
+As interfaces são definidas nos módulos KMP. O compartilhado conhece apenas o contrato:
+
+```kotlin
+// module1
+interface NativePlatformDependency1 {
+    fun doSomething(): String
+}
+
+// module2
+interface NativePlatformDependency2 {
+    fun doSomething(): String
+}
+```
+
+### Passo 2: Contrato — funções que retornam o módulo
+
+Cada feature expõe uma função que recebe uma função `Scope.() -> T` e **retorna** um `Module` do Koin. A plataforma chama `featureXModule(dependencyX = { ... })`, obtém o módulo e decide como registrá-lo.
+
+```kotlin
+// module1
+fun feature1Module(dependency1: Scope.() -> NativePlatformDependency1): Module = module {
+    factory<NativePlatformDependency1> { dependency1() }
+}
+
+// module2
+fun feature2Module(dependency2: Scope.() -> NativePlatformDependency2): Module = module {
+    factory<NativePlatformDependency2> { dependency2() }
+}
+```
+
+No Android, a função passada retorna a instância diretamente (ex.: `{ Dependency1() }`). No iOS, a função captura o container Swinject e resolve na hora (ex.: `{ _ in container.resolve(NativePlatformDependency1.self)! }`). O contrato é type-safe: o módulo declara o tipo esperado e o compilador exige que as plataformas passem funções compatíveis.
+
+### Passo 3: AppModule e initKoin
+
+O `AppModule` é a “raiz” do grafo do Koin: é a partir dele que o Koin sabe quais módulos carregar e onde procurar classes (por exemplo com `@ComponentScan`). A **inicialização** do Koin é feita **em cada plataforma** — no Android e no iOS separadamente — chamando `initKoin(declarations)` no ponto de entrada:
 
 ```kotlin
 @KoinApplication(modules = [KoinModule1::class, KoinModule2::class])
@@ -54,7 +180,7 @@ fun initKoin(declarations: KoinAppDeclaration) {
 }
 ```
 
-Os módulos Koin (`KoinModule1`, `KoinModule2`) fazem apenas `@ComponentScan`; as dependências nativas não vêm daqui — são registradas depois pelas chamadas `startModule1` / `startModule2` (que usam `loadKoinModules`). O `initKoin` é chamado **uma vez** no ponto de entrada (MainActivity, iOS init), antes de qualquer `startModuleN` e antes do `App()`.
+Os módulos Koin (`KoinModule1`, `KoinModule2`) fazem apenas `@ComponentScan`; as dependências nativas vêm dos módulos retornados por `feature1Module` e `feature2Module`, que o app pode incluir no `initKoin` ou carregar depois:
 
 ```kotlin
 @Module
@@ -66,160 +192,77 @@ class KoinModule1
 class KoinModule2
 ```
 
-**O que falta** — O Swinject sabe criar as implementações iOS das interfaces que o KMP conhece; o Koin sabe criar o UseCase desde que alguém tenha registrado as dependências nativas. O problema é que os dois mundos não se falam: o Koin roda dentro do framework que o app Swift importa e **não tem acesso ao container Swinject**. Por isso não basta registrar tudo no Swinject: é preciso que o app **entregue** ao Koin, de alguma forma, as instâncias (ou a capacidade de obtê-las) que o Swinject gerencia. As seções a seguir mostram por que isso é não trivial e como fazer essa ponte.
+### Duas estratégias para registrar os módulos de feature
 
----
+O módulo retornado por `featureXModule(...)` pode ser usado de duas formas.
 
-**Sumário:** [Como Swinject e Koin funcionam](#como-swinject-e-koin-funcionam-neste-projeto) · [Swinject e o desafio no iOS](#swinject-e-o-desafio-no-ios) · [Por que não é trivial](#por-que-não-é-trivial-direção-da-dependência) · [Visão geral](#visão-geral-da-solução) · [Implementação](#implementação) · [Benefícios e trade-offs](#benefícios-e-trade-offs) · [Conclusão](#conclusão)
+**Estratégia 1 — Módulo no start do Koin**
 
----
+O app inclui o módulo **diretamente** no bloco `initKoin`. No Android usa-se `modules(feature1Module(...))`; no iOS, a extensão `KoinApplication.loadModule(module)` dentro do bloco de declaração passado ao `initKoin`. O grafo do Koin já nasce com as dependências nativas daquele feature.
 
-## Swinject e o desafio no iOS
-
-No iOS, as dependências nativas ficam no Swinject: o app registra interfaces com implementações Swift e pede ao container quando precisa de uma instância. O **KMP não tem acesso a esse container**. O código Kotlin roda dentro do framework que o app importa; o Koin que monta o grafo no KMP não sabe como obter o que o Swinject gerencia. Ou seja: é preciso **entregar** essas referências ao mundo Kotlin. A solução adotada é o app passar, no ponto de entrada, funções que o Koin invocará na resolução; no iOS, cada função usa o container para fazer `resolve` e devolver a instância ao Koin. O Swinject continua como fonte de verdade; o KMP recebe as instâncias sem conhecer o container.
-
----
-
-## Por que não é trivial: direção da dependência
-
-O código compartilhado **não enxerga o código nativo** — e nem deveria. Em KMP, a dependência flui do app para as libs, nunca o contrário:
-
-```mermaid
-flowchart TD
-    androidApp[Android App - Kotlin]
-    iosApp[iOS App - Swift]
-    iosFramework[iOS App - Kotlin]
-    composeApp[Compose App - CMP]
-    module1[Module1 - KMP]
-    module2[Module2 - KMP]
-
-    androidApp --> composeApp
-    iosApp --> iosFramework
-    iosFramework --> composeApp
-    composeApp --> module1
-    composeApp --> module2
-```
-
-O app iOS importa o framework Kotlin; o framework depende do Compose App e dos módulos (module1, module2). Os módulos compartilhados ficam na base — sem referência ao app. Inverter essa seta criaria dependência circular. Um feature module KMP **nunca** referencia classes do app.
-
----
-
-## Visão geral da solução
-
-A resposta combina **lambdas** e **Koin**. O código compartilhado expõe funções `startModule1(dependency1)` e `startModule2(dependency2)` que recebem uma função `Scope.() -> T`. O app passa essa função no ponto de entrada; ela é usada em `loadKoinModules` para registrar um `factory` no Koin. Quando o UseCase for resolvido, o Koin invoca a função (no Android retorna a instância Kotlin; no iOS, a função resolve no Swinject) e injeta o resultado.
-
-**Fluxo em três passos:**
-
-1. **Plataforma** — O app chama `initKoin { }` e em seguida `startModule1(dependency1 = { Dependency1() })` e `startModule2(dependency2 = { Dependency2() })` (Android) ou, no iOS, funções que resolvem no container Swinject. As funções são usadas apenas para registrar as definições no Koin.
-
-2. **KMP** — Cada `startModuleN` chama `loadKoinModules(module { factory<T> { ... } })`, registrando a dependência nativa no container já inicializado. Os módulos Koin (`KoinModule1`, `KoinModule2`) fazem apenas `@ComponentScan`; as dependências nativas vêm dessas definições dinâmicas. O UseCase (`@Factory`) passa a ser resolvível.
-
-3. **Composable** — O `App()` obtém o `ModuleUseCase` via `get<>()`. O Koin resolve o UseCase e, ao injetar as dependências, invoca as funções registradas e retorna a instância.
-
-**Ordem crítica:** `initKoin` → `startModule2` / `startModule1` → `App()`. O Koin deve estar inicializado e os módulos carregados antes de exibir a UI.
-
----
-
-## Implementação
-
-### 1. Interfaces no `commonMain`
-
-As interfaces são definidas no módulo compartilhado. O KMP conhece apenas o contrato:
+Exemplo Android:
 
 ```kotlin
-interface NativePlatformDependency1 {
-    fun doSomething(): String
-}
-
-interface NativePlatformDependency2 {
-    fun doSomething(): String
-}
-```
-
-### 2. Implementações por plataforma
-
-Cada app implementa as interfaces com suas próprias classes. No Android, são classes Kotlin. No iOS, são classes Swift que importam o framework Kotlin:
-
-```kotlin
-// Android
-class Dependency1 : NativePlatformDependency1 {
-    override fun doSomething(): String = "[Android] Module1 Dependency1"
-}
-```
-
-```swift
-// iOS
-import IOSApp
-
-class iOSDependency1: NativePlatformDependency1 {
-    func doSomething() -> String {
-        return "[iOS] Module1 Dependency1"
-    }
-}
-```
-
-### 3. Contrato: funções que fornecem a dependência
-
-Cada módulo expõe uma função que recebe outra função com tipo `Scope.() -> T`. Essa função é invocada pelo Koin no momento da resolução. A plataforma passa essa função no ponto de entrada; o Koin usa ela para obter a instância e registrá-la como factory.
-
-```kotlin
-// module2
-fun startModule2(dependency2: Scope.() -> NativePlatformDependency2) {
-    loadKoinModules(
-        module {
-            factory<NativePlatformDependency2> { dependency2() }
-        }
+// MainActivity.onCreate
+initKoin {
+    modules(
+        feature1Module(dependency1 = { Dependency1() })
     )
 }
-```
-
-- **Android** — A função retorna a instância Kotlin diretamente, ex.: `{ Dependency2() }`.
-- **iOS** — A função captura o container Swinject e resolve na hora: `{ _ in container.resolve(NativePlatformDependency2.self)! }`.
-
-O contrato continua type-safe: o módulo declara que precisa de uma função que retorna `NativePlatformDependencyX`. Quem chama `startModuleN` deve passar uma função compatível; o compilador garante o alinhamento entre plataformas.
-
-### 4. Registro das dependências: `startModule1` e `startModule2`
-
-Cada módulo expõe uma função que recebe a função que fornece a dependência e chama `loadKoinModules` para registrar um `factory` no Koin já inicializado.
-
-```kotlin
-// module1
-fun startModule1(dependency1: Scope.() -> NativePlatformDependency1) {
-    loadKoinModules(
-        module {
-            factory<NativePlatformDependency1> { dependency1() }
-        }
-    )
-}
-```
-
-No Android seria possível registrar as dependências nativas diretamente dentro do bloco `initKoin { }` (por exemplo com `loadKoinModules(module { factory { Dependency1() } })`). Chamar os métodos de contrato (`startModule1`, `startModule2`) é mais interessante porque **mantém o contrato forte**: o módulo compartilhado declara explicitamente o que precisa, e qualquer mudança nas dependências exige que o app atualize as chamadas — o compilador aponta onde ajustar. Assim as plataformas permanecem alinhadas em tempo de build.
-
-O app chama `initKoin` e em seguida os `startModuleN` com as funções, **antes** de exibir a UI:
-
-```kotlin
-// Android - MainActivity.onCreate
-initKoin { }
-
-startModule2(dependency2 = { Dependency2() })
-startModule1(dependency1 = { Dependency1() })
-
 setContent { App() }
 ```
 
+Exemplo iOS:
+
 ```swift
-// iOS - init do app
-init() {
-    let container = DependencyInjector.createContainer()
-
-    AppModuleKt.doInitKoin { _ in }
-
-    Module1ContractKt.startModule1(dependency1: { _ in container.resolve(NativePlatformDependency1.self)! })
-    Module2ContractKt.startModule2(dependency2: { _ in container.resolve(NativePlatformDependency2.self)! })
+// iOSApp init
+AppModuleKt.doInitKoin { appKoin in
+    appKoin.loadModule(
+        module: Module1ContractKt.feature1Module(dependency1: { _ in container.resolve(NativePlatformDependency1.self)! })
+    )
 }
 ```
 
-### 5. Cadeia completa: Composable → UseCase → dependências
+**Estratégia 2 — Carregamento tardio**
+
+Depois de `initKoin` ter sido chamado, o app chama `loadKoinModules(module)` (no iOS, `KoinExtensionsKt.loadModule(module: ...)`). O módulo é **adicionado** ao container já em execução. Útil quando o módulo depende de algo que só existe após o `initKoin` ou quando se quer carregar features sob demanda.
+
+Exemplo Android:
+
+```kotlin
+initKoin { }
+loadKoinModules(feature2Module(dependency2 = { Dependency2() }))
+setContent { App() }
+```
+
+Exemplo iOS:
+
+```swift
+KoinExtensionsKt.loadModule(
+    module: Module2ContractKt.feature2Module(dependency2: { _ in container.resolve(NativePlatformDependency2.self)! })
+)
+```
+
+O projeto inclui helpers para as duas formas:
+
+```kotlin
+// composeApp - KoinExtensions.kt
+fun loadModule(module: Module) {
+    loadKoinModules(module)
+}
+
+fun KoinApplication.loadModule(module: Module) {
+    modules(module)
+}
+```
+
+### Motivo de usar contratos e manter a configuração no KMP
+
+Usar **contratos** (`feature1Module`, `feature2Module`) em vez de registrar definições soltas no app mantém o **contrato forte**: o módulo compartilhado declara explicitamente o que precisa (uma função que retorna `NativePlatformDependencyX`). Se alguém adicionar ou alterar uma dependência no módulo, a assinatura da função de contrato muda e o compilador obriga o app (Android e iOS) a atualizar as chamadas. Assim as plataformas permanecem alinhadas em tempo de build, sem falhas em runtime por dependência faltando.
+
+Manter a **configuração das dependências nativas dentro dos módulos KMP** (cada módulo expõe seu `featureXModule` e define o `factory` no Koin) evita que o app tenha de “adivinhar” o que registrar: o módulo diz o que precisa e o app apenas passa a função que fornece a instância. O Koin fica como única fonte de verdade no mundo Kotlin; no iOS, o Swinject permanece como fonte de verdade no mundo Swift, e a ponte entre os dois é feita pelas funções passadas nos contratos.
+
+### Cadeia completa: Composable → UseCase → dependências
 
 O `App()` assume que o Koin já foi inicializado e os módulos carregados. Apenas obtém o UseCase e exibe o resultado:
 
@@ -240,37 +283,31 @@ fun App() {
 }
 ```
 
-**Fluxo:** Na plataforma: `initKoin` → `startModule2` / `startModule1` (funções registradas no Koin). No Composable: `get<ModuleUseCase>()` → Koin resolve o UseCase, invoca as funções para obter as dependências nativas e injeta → resultado na tela.
-
----
-
-## Benefícios e trade-offs
-
-### Pontos fortes
-
-| Aspecto | Descrição |
-|---------|-----------|
-| **Sem estado global** | A plataforma passa funções no ponto de entrada e o Koin usa `loadKoinModules` para registrar os factories. Nada fica armazenado em singleton. |
-| **Swinject preservado** | No iOS, o Koin não substitui o DI nativo. O Swinject continua como fonte de verdade; as funções capturam o container e chamam `resolve` quando o Koin precisa da instância. |
-| **Contrato forte** | Chamar `startModule1` e `startModule2` (em vez de registrar tudo dentro de `initKoin`) faz o módulo declarar o que precisa. Mudanças quebram o build nas plataformas que não atualizarem as chamadas. |
-| **Escalável** | Vários módulos seguem o mesmo padrão: `startModule1`, `startModule2`, etc. O app chama todos em sequência após `initKoin`. |
-| **Testável** | Em testes, basta chamar `startModule1 { fakeDependency1 }` (e equivalentes) antes de resolver o UseCase. |
-| **Inicialização explícita** | O Koin é inicializado uma vez no ponto de entrada (`initKoin`), e os módulos são carregados em seguida. O `App()` não chama `startKoin`, evitando dúvidas com recomposição. |
-
-### Pontos fracos e mitigações
-
-| Trade-off | Impacto | Mitigação |
-|-----------|---------|-----------|
-| **Ordem crítica** | Se a UI for exibida antes de `initKoin` e dos `startModuleN`, a resolução falhará. | Documentar a ordem no ponto de entrada (initKoin → startModule2 / startModule1 → setContent / ContentView). Manter um único lugar de bootstrap por plataforma. |
-| **Dependência entre módulos** | Um módulo pode depender de outro para o tipo da função (ex.: module1 usar em `startModule1` um tipo definido em module2). | Documentar a dependência entre módulos. |
-| **Funções no iOS** | A sintaxe em Swift para as funções Kotlin pode ser menos óbvia (`{ _ in container.resolve(...)! }`). | Documentar no README ou em comentários no init do app iOS o papel de cada chamada. |
-
-### Quando faz sentido
-
-Adequada quando já existe DI nativo (Swinject, Hilt) e se quer integrar KMP sem reescrever tudo.
+Fluxo: na plataforma, `initKoin` (e, se usar carregamento tardio, `loadKoinModules`). No Composable, `get<ModuleUseCase>()` → o Koin resolve o UseCase, invoca as funções registradas nos módulos para obter as dependências nativas e injeta → resultado na tela.
 
 ---
 
 ## Conclusão
 
-O uso de **funções** `Scope.() -> T` com `loadKoinModules` permite injetar dependências nativas no KMP sem violar a direção da dependência entre app e lib. O app chama `initKoin` e em seguida os `startModuleN` com as funções que fornecem as instâncias; o Koin registra esses factories e resolve as dependências quando o UseCase for criado. Chamar os métodos de contrato mantém o contrato forte em todas as plataformas. O padrão escala para múltiplos módulos (module1, module2, …); a ordem de inicialização (`initKoin` → `startModule2` / `startModule1` → `App()`) deve ser respeitada. Em apps com DI nativo já estabelecido (Swinject no iOS, Hilt no Android), essa abordagem integra o Koin ao ecossistema existente sem reescrever o grafo nativo.
+**Benefícios e trade-offs**
+
+A abordagem permite injetar dependências nativas no KMP sem violar a direção da dependência entre app e lib. A plataforma passa funções no ponto de entrada; o Koin usa os módulos retornados por `featureXModule(...)` para registrar os factories. Não há estado global além do próprio container Koin. No iOS, o Swinject continua como fonte de verdade e o Koin apenas invoca as funções que fazem `resolve` no container. O contrato forte garante que mudanças nas dependências quebrem o build nas plataformas que não atualizarem as chamadas. O padrão escala para vários módulos e é testável: em testes basta passar `feature1Module { fakeDependency1 }` ao montar o Koin ou ao chamar `loadKoinModules`.
+
+Por outro lado, a ordem de inicialização é crítica: se a UI for exibida antes de `initKoin` e dos módulos de feature estarem registrados, a resolução falhará. É importante garantir que todos os `featureXModule` usados estejam no container (via `initKoin` ou `loadKoinModules`) antes de exibir o Compose. Um módulo pode depender de outro para o tipo da função (por exemplo module1 usar um tipo definido em module2); nesses casos vale documentar a dependência entre módulos. No iOS, a sintaxe das funções em Swift para Kotlin pode ser menos óbvia; comentários no init do app ajudam.
+
+**Decisões arquiteturais**
+
+O uso de **contratos** (`featureXModule`) faz o módulo declarar o que precisa e mantém o compilador como guarda entre plataformas. A **configuração dos módulos no KMP** (definição do `module { factory { ... } }` dentro do módulo compartilhado) centraliza no KMP o formato do grafo e deixa o app apenas fornecer a implementação. O **start do Koin em cada plataforma** (`initKoin` no Android no ponto de entrada, e no iOS no init do app) mantém uma única inicialização do container por processo e deixa claro onde o grafo é montado; o `App()` não chama `startKoin`, evitando dúvidas com recomposição.
+
+**Multi-módulos: uma inicialização do Koin e vários métodos de contrato**
+
+Em projetos com vários módulos KMP (feature1, feature2, …), há **uma única** inicialização do Koin por plataforma e **vários** métodos de contrato — um por módulo que expõe dependências nativas. Cada `featureXModule` é uma ponte entre o app e aquele módulo. O ponto importante é que **todos esses métodos de contrato devem ser chamados em um único lugar** do app: no Android, por exemplo no `onCreate` da `MainActivity`, e no iOS no `init` do app. Assim a ordem fica explícita e não há risco de o Koin ser usado antes de algum módulo de feature ter sido registrado. Concentrar as chamadas em um único ponto facilita manutenção: quem alterar o grafo sabe onde procurar.
+
+Outros autores propuseram estratégias mais simples, por exemplo um único módulo de plataforma ou um único ponto de “setup” com expect/actual. Essas abordagens funcionam bem quando há poucas dependências nativas ou um único bloco de código específico por plataforma. A estratégia descrita aqui — múltiplos módulos, cada um com seu contrato que retorna um `Module`, e a possibilidade de incluir no start do Koin ou de carregar tardiamente — consegue ir além: escala para muitos features, preserva o DI nativo (Swinject) no iOS, mantém o contrato forte por módulo e permite flexibilidade de carregamento conforme a necessidade do app.
+
+### Referências
+
+- [How to use Swift packages in Kotlin Multiplatform using Koin](https://proandroiddev.com/how-to-use-swift-packages-in-kotlin-multiplatform-using-koin-c7d24fdbbbd7) (ProAndroidDev)
+- [KMP Advanced Patterns \| Koin](https://insert-koin.io/docs/reference/koin-mp/kmp/) (insert-koin.io)
+- [KMP: Injecting Swift classes via Koin](https://medium.com/codandotv/kmp-injecting-swift-classes-via-koin-8bb9c7d7859f) (Medium / Coda no TV)
+- [Injeção de dependências com Koin no Kotlin Multiplatform (KMP)](https://medium.com/fretebras-tech/inje%C3%A7%C3%A3o-de-depend%C3%AAncias-com-koin-no-kotlin-multiplatform-kmp-d3eda45249e6) (Medium / Fretebras Tech)
