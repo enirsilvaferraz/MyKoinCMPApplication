@@ -6,8 +6,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.module1.di.startModule1
-import com.example.module2.di.startModule2
+import com.example.module1.di.feature1Module
+import com.example.module2.di.feature2Module
+import org.koin.core.context.loadKoinModules
 
 class MainActivity : ComponentActivity() {
 
@@ -15,14 +16,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        initKoin {}
+        initKoin {
+            modules(
+                feature1Module(dependency1 = { Dependency1() })
+            )
+        }
 
-        startModule2(
-            dependency2 = { Dependency2() }
-        )
-
-        startModule1(
-            dependency1 = { Dependency1() }
+        loadKoinModules(
+            feature2Module(dependency2 = { Dependency2() })
         )
 
         setContent {

@@ -8,10 +8,16 @@ struct iOSApp: App {
         
         let container = DependencyInjector.createContainer()
 
-        AppModuleKt.doInitKoin {_ in }
+        AppModuleKt.doInitKoin { appKoin in
+            appKoin.loadModule(
+                module: Module1ContractKt.feature1Module(dependency1: { _ in container.resolve(NativePlatformDependency1.self)! })
+            )
+        }
         
-        Module1ContractKt.startModule1(dependency1: { _ in container.resolve(NativePlatformDependency1.self)! })
-        Module2ContractKt.startModule2(dependency2: { _ in container.resolve(NativePlatformDependency2.self)! })
+
+        KoinExtensionsKt.loadModule(
+            module: Module2ContractKt.feature2Module(dependency2: { _ in container.resolve(NativePlatformDependency2.self)! })
+        )
     }
     
     var body: some Scene {
