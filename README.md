@@ -46,14 +46,14 @@ O diagrama abaixo mostra onde cada parte fica: os apps (com as implementações)
 
 ```mermaid
 flowchart TD
-    subgraph apps["Apps — implementações das dependências"]
-        androidApp["Android App<br/><small>Dependency1, Dependency2</small>"]
-        iosApp["iOS App<br/><small>iOSDependency1, iOSDependency2, Swinject</small>"]
+    subgraph apps["Apps — Dependências Nativas"]
+        androidApp["Android App<br/><small>AndroidDependency1, AndroidDependency2 (Koin)</small>"]
+        iosApp["iOS App<br/><small>iOSDependency1, iOSDependency2 (Swinject)</small>"]
     end
 
     subgraph framework["Framework KMP"]
-        composeApp["Compose App<br/><small>App() usa get&lt;ModuleUseCase&gt;()</small>"]
-        module1["Module1<br/><small>interface NativePlatformDependency1<br/>ModuleUseCase</small>"]
+        composeApp["Compose App<br/><small>App(), ModuleUseCase</small>"]
+        module1["Module1<br/><small>interface NativePlatformDependency1</small>"]
         module2["Module2<br/><small>interface NativePlatformDependency2</small>"]
     end
 
@@ -63,7 +63,7 @@ flowchart TD
     composeApp --> module2
 ```
 
-- **Implementações:** no **Android App** (`Dependency1`, `Dependency2`) e no **iOS App** (`iOSDependency1`, `iOSDependency2`, registradas no Swinject).
+- **Implementações:** no **Android App** (`AndroidDependency1`, `AndroidDependency2`) e no **iOS App** (`iOSDependency1`, `iOSDependency2`, registradas no Swinject).
 - **Interfaces:** declaradas no **Module1** e no **Module2** (código compartilhado KMP).
 - **Uso:** no **Compose App**, onde o `App()` obtém o `ModuleUseCase` via Koin; o UseCase depende das duas interfaces e precisa receber as instâncias que cada app fornecerá.
 
@@ -79,11 +79,11 @@ No Android, são classes Kotlin no app que implementam as interfaces expostas pe
 
 ```kotlin
 // Android - app
-class Dependency1 : NativePlatformDependency1 {
+class AndroidDependency1 : NativePlatformDependency1 {
     override fun doSomething(): String = "[Android] Module Dependency1"
 }
 
-class Dependency2 : NativePlatformDependency2 {
+class AndroidDependency2 : NativePlatformDependency2 {
     override fun doSomething(): String = "[Android] Module Dependency2"
 }
 ```
@@ -109,7 +109,7 @@ class iOSDependency2: NativePlatformDependency2 {
 
 ### Como a DI funciona no Android e no iOS
 
-No **Android**, o app pode usar Koin, Hilt ou outro container. O ponto de entrada (por exemplo a `MainActivity`) conhece o contexto da aplicação e pode criar ou obter as dependências (por exemplo `Dependency1()`, `Dependency2()`). Ou seja, o app sabe *como* fornecer as instâncias que o Koin precisará para resolver o UseCase.
+No **Android**, o app pode usar Koin, Hilt ou outro container. O ponto de entrada (por exemplo a `MainActivity`) conhece o contexto da aplicação e pode criar ou obter as dependências (por exemplo `AndroidDependency1()`, `AndroidDependency2()`). Ou seja, o app sabe *como* fornecer as instâncias que o Koin precisará para resolver o UseCase.
 
 No **iOS**, é comum usar um container nativo como o **Swinject**. O app cria um `Container`, registra as interfaces (incluindo as que vêm do framework Kotlin) com as implementações Swift e, quando precisa de uma instância, chama `container.resolve(Interface.self)`. No projeto, isso é feito pelo `DependencyInjector`:
 
@@ -134,15 +134,15 @@ A ideia é: o módulo KMP expõe uma função que recebe “quem sabe fornecer a
 
 ### Passo 1: Interfaces no código compartilhado
 
-As interfaces são definidas nos módulos KMP. O compartilhado conhece apenas o contrato:
+As interfaces são definidas nos módulos KMP (por exemplo em `module1/dependencies/` e `module2/dependencies/`). O compartilhado conhece apenas o contrato:
 
 ```kotlin
-// module1
+// module1/dependencies/NativePlatformDependency1.kt
 interface NativePlatformDependency1 {
     fun doSomething(): String
 }
 
-// module2
+// module2/dependencies/NativePlatformDependency2.kt
 interface NativePlatformDependency2 {
     fun doSomething(): String
 }
@@ -164,23 +164,32 @@ fun feature2Module(dependency2: Scope.() -> NativePlatformDependency2): Module =
 }
 ```
 
-No Android, a função passada retorna a instância diretamente (ex.: `{ Dependency1() }`). No iOS, a função captura o container Swinject e resolve na hora (ex.: `{ _ in container.resolve(NativePlatformDependency1.self)! }`). O contrato é type-safe: o módulo declara o tipo esperado e o compilador exige que as plataformas passem funções compatíveis.
+No Android, a função passada retorna a instância diretamente (ex.: `{ AndroidDependency1() }`). No iOS, a função captura o container Swinject e resolve na hora (ex.: `{ _ in container.resolve(NativePlatformDependency1.self)! }`). O contrato é type-safe: o módulo declara o tipo esperado e o compilador exige que as plataformas passem funções compatíveis.
 
 ### Passo 3: AppModule e initKoin
 
-O `AppModule` é a “raiz” do grafo do Koin: é a partir dele que o Koin sabe quais módulos carregar e onde procurar classes (por exemplo com `@ComponentScan`). A **inicialização** do Koin é feita **em cada plataforma** — no Android e no iOS separadamente — chamando `initKoin(declarations)` no ponto de entrada:
+O `AppModule` é a “raiz” do grafo do Koin: e declara os módulos (incluindo `ComposeModule`, que escaneia o pacote do `ModuleUseCase`). A inicialização do Koin é feita em cada plataforma chamando `initKoin(declarations)` no ponto de entrada:
 
 ```kotlin
-@KoinApplication(modules = [KoinModule1::class, KoinModule2::class])
-@ComponentScan("com.example.mykoincmpapplication")
+@KoinApplication(
+    modules = [
+        KoinModule1::class,
+        KoinModule2::class,
+        ComposeModule::class
+    ]
+)
 class AppModule
+
+@Module
+@ComponentScan("com.example.mykoincmpapplication")
+class ComposeModule
 
 fun initKoin(declarations: KoinAppDeclaration) {
     startKoin<AppModule>(declarations)
 }
 ```
 
-Os módulos Koin (`KoinModule1`, `KoinModule2`) fazem apenas `@ComponentScan`; as dependências nativas vêm dos módulos retornados por `feature1Module` e `feature2Module`, que o app pode incluir no `initKoin` ou carregar depois:
+Os módulos Koin (`KoinModule1`, `KoinModule2`, `ComposeModule`) fazem apenas `@ComponentScan`; o `ComposeModule` escaneia o pacote onde está o `ModuleUseCase`; as dependências nativas vêm dos módulos retornados por `feature1Module` e `feature2Module`, que o app pode incluir no `initKoin` ou carregar depois:
 
 ```kotlin
 @Module
@@ -206,7 +215,7 @@ Exemplo Android:
 // MainActivity.onCreate
 initKoin {
     modules(
-        feature1Module(dependency1 = { Dependency1() })
+        feature1Module(dependency1 = { AndroidDependency1() })
     )
 }
 setContent { App() }
@@ -216,8 +225,9 @@ Exemplo iOS:
 
 ```swift
 // iOSApp init
+let container = DependencyInjector.createContainer()
 AppModuleKt.doInitKoin { appKoin in
-    appKoin.loadModule(
+    appKoin.modules(
         module: Module1ContractKt.feature1Module(dependency1: { _ in container.resolve(NativePlatformDependency1.self)! })
     )
 }
@@ -225,33 +235,33 @@ AppModuleKt.doInitKoin { appKoin in
 
 **Estratégia 2 — Carregamento tardio**
 
-Depois de `initKoin` ter sido chamado, o app chama `loadKoinModules(module)` (no iOS, `KoinExtensionsKt.loadModule(module: ...)`). O módulo é **adicionado** ao container já em execução. Útil quando o módulo depende de algo que só existe após o `initKoin` ou quando se quer carregar features sob demanda.
+Depois de `initKoin` ter sido chamado, o app chama `loadKoinModules(module)` (no iOS, `KoinExtensionsKt.loadKoinModules(module: ...)`). O módulo é **adicionado** ao container já em execução. Útil quando o módulo depende de algo que só existe após o `initKoin` ou quando se quer carregar features sob demanda.
 
 Exemplo Android:
 
 ```kotlin
 initKoin { }
-loadKoinModules(feature2Module(dependency2 = { Dependency2() }))
+loadKoinModules(feature2Module(dependency2 = { AndroidDependency2() }))
 setContent { App() }
 ```
 
 Exemplo iOS:
 
 ```swift
-KoinExtensionsKt.loadModule(
+KoinExtensionsKt.loadKoinModules(
     module: Module2ContractKt.feature2Module(dependency2: { _ in container.resolve(NativePlatformDependency2.self)! })
 )
 ```
 
-O projeto inclui helpers para as duas formas:
+O projeto inclui helpers para as duas formas (em `composeApp`, visível no iOS via `KoinExtensionsKt`):
 
 ```kotlin
 // composeApp - KoinExtensions.kt
-fun loadModule(module: Module) {
-    loadKoinModules(module)
+fun loadKoinModules(module: Module) {
+    org.koin.core.context.loadKoinModules(module)
 }
 
-fun KoinApplication.loadModule(module: Module) {
+fun KoinApplication.modules(module: Module) {
     modules(module)
 }
 ```
