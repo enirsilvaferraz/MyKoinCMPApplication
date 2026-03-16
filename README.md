@@ -307,10 +307,16 @@ Por outro lado, a ordem de inicialização é crítica: se a UI for exibida ante
 
 Outros autores propuseram estratégias mais simples, por exemplo um único módulo de plataforma ou um único ponto de “setup” com expect/actual. Essas abordagens funcionam bem quando há poucas dependências nativas ou um único bloco de código específico por plataforma. A estratégia descrita aqui — múltiplos módulos, cada um com seu contrato que retorna um `Module`, e a possibilidade de incluir no start do Koin ou de carregar tardiamente — consegue ir além: escala para muitos features, preserva o DI nativo (Swinject) no iOS, mantém o contrato forte por módulo e permite flexibilidade de carregamento conforme a necessidade do app.
 
+<br/>
+<br/>
+
 <div align="center">
-  <img src="docs/Android.png" alt="Android" width="320" />
+  <img src="docs/Android.png" alt="Android" width="305" />
   <img src="docs/iOS.png" alt="iOS" width="320" />
 </div>
+
+<br/>
+<br/>
 
 ### Referências
 
